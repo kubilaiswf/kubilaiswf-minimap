@@ -148,12 +148,13 @@ fn read() -> Option<Snapshot> {
 
 /// The map fragments the player has, one bit per fragment of the map they're on, as the map
 /// tile masks number them: bit b is WorldMapPieceParam row `base + b`, base 0 for the
-/// overworld and 100 for the underground (checked against each row's area on the map).
+/// overworld, 100 for the underground and 1000 for the Shadow Realm.
 /// Everything counts as found until the params and flags are loaded.
 fn map_fragments(map: Option<MapId>) -> u32 {
     let base = match map {
         Some(MapId::Overworld) => 0,
         Some(MapId::Underground) => 100,
+        Some(MapId::ShadowRealm) => 1000,
         None => return u32::MAX,
     };
     // SAFETY: game tasks run in step with the game's own updates of these singletons.
@@ -204,14 +205,18 @@ fn locate(block: BlockId, local: [f32; 2]) -> ([f32; 2], i32, Option<MapId>) {
         // Overworld blocks are mAA_XX_ZZ_LL grid tiles of (256 << LL) meters with positions
         // relative to the tile center. Larger tiles are centered on their 2x2 or 4x4 group of
         // small tiles, hence the extra half-tile offsets.
-        let tile = (256u32 << (block.index() & 0x3)) as f32;
+        // Only the units digit is the grid scale; the tens digit is an event variant.
+        let tile = (256u32 << (block.index() % 10).min(2)) as f32;
         let center = (tile - 256.0) / 2.0;
         let position = [
             local[0] + f32::from(block.block()) * tile + center,
             local[1] + f32::from(block.region()) * tile + center,
         ];
-        // The Shadow of the Erdtree map (area 61) isn't calibrated yet.
-        let map = (block.area() == 60).then_some(MapId::Overworld);
+        let map = match block.area() {
+            60 => Some(MapId::Overworld),
+            61 => Some(MapId::ShadowRealm),
+            _ => None,
+        };
         return (position, i32::from(block.area()), map);
     }
     // Roundtable Hold has a world map spot but isn't anywhere on the map itself.
@@ -224,6 +229,7 @@ fn locate(block: BlockId, local: [f32; 2]) -> ([f32; 2], i32, Option<MapId>) {
     let (space, map) = match (dst_area, block.area()) {
         (60, 12) => (12, Some(MapId::Underground)),
         (60, _) => (60, Some(MapId::Overworld)),
+        (61, _) => (61, Some(MapId::ShadowRealm)),
         (area, _) => (i32::from(area), None),
     };
     (position, space, map)
@@ -368,17 +374,14 @@ struct MarkerSlot {
     /// Game world map coordinates, see `maptiles::from_game_map`.
     x: f32,
     y: f32,
-    /// 0 for the overworld map, 1 for the underground map.
+    /// 0 for the overworld, 1 for the underground, 10 for the Shadow Realm.
     map: u8,
     icon: u8,
     _pad: [u8; 2],
 }
 
 fn placed_beacons(map: MapId) -> Vec<Beacon> {
-    let wanted_map = match map {
-        MapId::Overworld => 0,
-        MapId::Underground => 1,
-    };
+    let wanted_map = map.menu_id();
     // SAFETY: read on a game task, so the menu objects aren't being torn down meanwhile;
     // every pointer in the chain is checked before it's followed.
     unsafe {
@@ -431,6 +434,7 @@ struct PointRow {
     space: i32,
     on_overworld: bool,
     on_underground: bool,
+    on_shadow_realm: bool,
     icon: u16,
     alt_icon: u16,
     open_flag: u32,
@@ -465,6 +469,7 @@ fn visible_points(map: MapId, position: [f32; 2], space: i32) -> Vec<MapPoint> {
         .filter(|row| match map {
             MapId::Overworld => row.on_overworld,
             MapId::Underground => row.on_underground,
+            MapId::ShadowRealm => row.on_shadow_realm,
         })
         .filter(|row| {
             row.space == space
@@ -518,10 +523,7 @@ fn mfg_api_points(map: MapId, position: [f32; 2], space: i32) -> Vec<MapPoint> {
     }
     let mut cache = CACHE.lock().unwrap();
     if cache.map != Some(map) || cache.calls.is_multiple_of(10) {
-        let layer = match map {
-            MapId::Overworld => 0,
-            MapId::Underground => 1,
-        };
+        let layer = map.mfg_layer();
         cache.points.clear();
         mfg::visit_points(layer, |point| {
             let [area, x, z, _] = point.raw_map_id.to_be_bytes();
@@ -660,6 +662,8 @@ fn points() -> Option<&'static [PointRow]> {
                 on_overworld: row.disp_mask00() || unmasked && located == Some(MapId::Overworld),
                 on_underground: row.disp_mask01()
                     || unmasked && located == Some(MapId::Underground),
+                on_shadow_realm: row.disp_mask02()
+                    || unmasked && located == Some(MapId::ShadowRealm),
                 icon: row.icon_id(),
                 alt_icon: row.alt_icon_id(),
                 open_flag: row.event_flag_id(),
@@ -683,4 +687,31 @@ fn points() -> Option<&'static [PointRow]> {
         }
     }
     Some(POINTS.get_or_init(|| points))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dlc_and_base_world_keep_the_same_grid_scale_across_event_variants() {
+        for (area, map) in [(60, MapId::Overworld), (61, MapId::ShadowRealm)] {
+            for lod in 0..=2 {
+                let tile = (256u32 << lod) as f32;
+                let expected = [
+                    12.0 + 18.0 * tile + (tile - 256.0) / 2.0,
+                    -9.0 + 16.0 * tile + (tile - 256.0) / 2.0,
+                ];
+                for variant in [0, 10] {
+                    assert_eq!(
+                        locate(
+                            BlockId::from_parts(area, 18, 16, variant + lod),
+                            [12.0, -9.0]
+                        ),
+                        (expected, i32::from(area), Some(map))
+                    );
+                }
+            }
+        }
+    }
 }
