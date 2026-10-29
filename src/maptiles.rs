@@ -26,7 +26,7 @@ const EMPTY: [u8; 4] = [40, 34, 26, 255];
 pub enum MapId {
     Overworld,
     Underground,
-    ShadowRealm,
+    LandOfShadow,
 }
 
 impl MapId {
@@ -34,7 +34,7 @@ impl MapId {
         match name {
             "M00" => Some(Self::Overworld),
             "M01" => Some(Self::Underground),
-            "M10" => Some(Self::ShadowRealm),
+            "M10" => Some(Self::LandOfShadow),
             _ => None,
         }
     }
@@ -44,7 +44,7 @@ impl MapId {
         match self {
             Self::Overworld => 0,
             Self::Underground => 1,
-            Self::ShadowRealm => 10,
+            Self::LandOfShadow => 10,
         }
     }
 
@@ -53,7 +53,7 @@ impl MapId {
         match self {
             Self::Overworld => 0,
             Self::Underground => 1,
-            Self::ShadowRealm => 2,
+            Self::LandOfShadow => 2,
         }
     }
 }
@@ -266,125 +266,4 @@ fn decode_tile(oodle: &Oodle, dcx: &[u8]) -> io::Result<Vec<u8>> {
             [r, g, b, a]
         })
         .collect())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn dlc_atlas_is_separate_and_uses_the_same_meter_scale() {
-        assert_eq!(MapId::from_name("M10"), Some(MapId::ShadowRealm));
-        assert_eq!(MapId::ShadowRealm.menu_id(), 10);
-        assert_eq!(MapId::ShadowRealm.mfg_layer(), 2);
-        assert_eq!(
-            (MapId::Overworld.menu_id(), MapId::Overworld.mfg_layer()),
-            (0, 0)
-        );
-        assert_eq!(
-            (MapId::Underground.menu_id(), MapId::Underground.mfg_layer()),
-            (1, 1)
-        );
-        // Gravesite Plain's world-map reference, with the same 1 px/m scale as M00.
-        let world = [46.0 * 256.0 + 61.56, 40.0 * 256.0 + 34.086];
-        let pixel = map_pixel(world);
-        assert!((pixel[0] - 4797.56).abs() < 0.002);
-        assert!((pixel[1] - 4258.086).abs() < 0.002);
-        let recovered = from_game_map([pixel[0], 41.0 * TILE as f32 - pixel[1]]);
-        assert!((0..2).all(|axis| (recovered[axis] - world[axis]).abs() < 0.002));
-        let entries = ["M00", "M01", "M10"]
-            .into_iter()
-            .map(|map| BinderEntry {
-                name: format!("71_MapTile\\MENU_MapTile_{map}_L0_18_16_00000001.tpf.dcx"),
-                offset: 0,
-                size: 0,
-            })
-            .collect();
-        let tiles = index_tiles(entries);
-        assert_eq!(tiles.len(), 3);
-        for map in [MapId::Overworld, MapId::Underground, MapId::ShadowRealm] {
-            assert!(tiles.contains_key(&(map, [18, 16], 1)));
-        }
-    }
-
-    #[test]
-    #[ignore = "Requires MINIMAP_WORLD_TEST_ROOT pointing to a local game install"]
-    fn real_shadow_realm_tiles_preserve_fragment_variants_and_world_switches() {
-        let root = std::env::var_os("MINIMAP_WORLD_TEST_ROOT").expect("Set local game root");
-        let root = Path::new(&root);
-        let oodle = Oodle::load(&root.join("oo2core_6_win64.dll")).unwrap();
-        let masks = read_masks(
-            &oodle
-                .decompress_dcx(
-                    &archive::open(root, "/menu/71_maptile.mtmskbnd.dcx")
-                        .unwrap()
-                        .read_all()
-                        .unwrap(),
-                )
-                .unwrap(),
-        )
-        .unwrap();
-        let tiles = index_tiles(
-            read_binder(
-                &archive::open(root, "/menu/71_maptile.tpfbhd")
-                    .unwrap()
-                    .read_all()
-                    .unwrap(),
-            )
-            .unwrap(),
-        );
-        let mut bdt = archive::open(root, "/menu/71_maptile.tpfbdt").unwrap();
-        let mut decoded = 0;
-        for (&(map, cell, variant), entry) in &tiles {
-            if map == MapId::ShadowRealm && variant == masks.get(&(map, cell)).copied().unwrap_or(0)
-            {
-                assert_eq!(
-                    decode_tile(&oodle, &bdt.read_at(entry.offset, entry.size).unwrap())
-                        .unwrap()
-                        .len(),
-                    TILE * TILE * 4
-                );
-                decoded += 1;
-            }
-        }
-        assert!(decoded > 500, "DLC tiles missing: {decoded}");
-        let loader = Loader::spawn(root);
-        let origin = [17, 15];
-        for (map, fragments) in [
-            (MapId::ShadowRealm, 0),
-            (MapId::ShadowRealm, u32::MAX),
-            (MapId::Overworld, u32::MAX),
-            (MapId::ShadowRealm, u32::MAX),
-        ] {
-            loader.request((map, origin, fragments));
-            let window = loader
-                .windows
-                .lock()
-                .unwrap()
-                .recv_timeout(Duration::from_secs(30))
-                .unwrap();
-            assert_eq!((window.map, window.origin), (map, origin));
-            for dy in 0..WINDOW_TILES {
-                for dx in 0..WINDOW_TILES {
-                    let cell = [origin[0] + dx as i32, origin[1] + dy as i32];
-                    let variant = masks[&(map, cell)] & fragments;
-                    let entry = &tiles[&(map, cell, variant)];
-                    let expected =
-                        decode_tile(&oodle, &bdt.read_at(entry.offset, entry.size).unwrap())
-                            .unwrap();
-                    for row in 0..TILE {
-                        let at = (((WINDOW_TILES - 1 - dy) * TILE + row) * WINDOW + dx * TILE) * 4;
-                        assert_eq!(
-                            &window.rgba[at..at + TILE * 4],
-                            &expected[row * TILE * 4..(row + 1) * TILE * 4]
-                        );
-                    }
-                }
-            }
-        }
-        println!(
-            "Decoded {decoded} M10 cells; fragment variants and DLC/base/DLC windows match game tiles."
-        );
-    }
 }

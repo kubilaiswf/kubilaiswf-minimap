@@ -25,7 +25,7 @@ It draws the game's own world map in the top right corner, turns with your camer
 ## Features
 
 - **The game's own world map**, read from your install while the game runs. Nothing from the game is shipped.
-- **Fully revealed**, in the overworld, inside legacy dungeons, in the underground and in Shadow of the Erdtree. Or, with `full_map = false`, only what your map fragments reveal, like the world map. DLC maps use the tiles from your own install and need no extra map files.
+- **Fully revealed**, in the overworld, inside legacy dungeons, in the underground and in Shadow of the Erdtree. Or, with `full_map = false`, only what your map fragments reveal, like the world map.
 - **Turns with the camera** or stays north up, with a smooth arrow and three zoom levels (40, 80, 160 m).
 - **Graces and beacons.** Numbered like in the game, beacons out of range point the way from the rim.
 - **[Map for Goblins](https://www.nexusmods.com/eldenring/mods/3091) and [Map for Goblins DLL](https://www.nexusmods.com/eldenring/mods/10062).** Their markers show up and disappear once looted. With the DLL edition you get its icons, and hiding a category in its menu hides it here too. From its version 2.1.6 the minimap reads both through its map API.
@@ -100,13 +100,12 @@ Updating from before 0.4.0? The keys used to be F9 and F10, which clash with Map
 
 **A key does nothing, or does two things.** Another mod uses the same key. Change `toggle_key` or `zoom_key` in `minimap.ini`.
 
-**The map is blank in some places.** Shadow of the Erdtree areas aren't supported yet, and overhauls that move areas around can put you somewhere the world map doesn't cover.
+**The map is blank in some places.** Overhauls that move areas around can put you somewhere the world map doesn't cover.
 
 </details>
 
 ## Known limitations
 
-- No Shadow of the Erdtree map yet, DLC areas get a plain compass.
 - Markers of the original Map for Goblins are simple shapes, not the game's icons.
 - Tested with me3 and Elden Mod Loader. For Elden Mod Loader, put `kubilaiswf-minimap.dll` straight into its `mods` folder.
 

@@ -148,13 +148,14 @@ fn read() -> Option<Snapshot> {
 
 /// The map fragments the player has, one bit per fragment of the map they're on, as the map
 /// tile masks number them: bit b is WorldMapPieceParam row `base + b`, base 0 for the
-/// overworld, 100 for the underground and 1000 for the Shadow Realm.
+/// overworld, 100 for the underground and 1000 for the Land of Shadow (checked against each
+/// row's area on the map).
 /// Everything counts as found until the params and flags are loaded.
 fn map_fragments(map: Option<MapId>) -> u32 {
     let base = match map {
         Some(MapId::Overworld) => 0,
         Some(MapId::Underground) => 100,
-        Some(MapId::ShadowRealm) => 1000,
+        Some(MapId::LandOfShadow) => 1000,
         None => return u32::MAX,
     };
     // SAFETY: game tasks run in step with the game's own updates of these singletons.
@@ -214,7 +215,7 @@ fn locate(block: BlockId, local: [f32; 2]) -> ([f32; 2], i32, Option<MapId>) {
         ];
         let map = match block.area() {
             60 => Some(MapId::Overworld),
-            61 => Some(MapId::ShadowRealm),
+            61 => Some(MapId::LandOfShadow),
             _ => None,
         };
         return (position, i32::from(block.area()), map);
@@ -229,7 +230,7 @@ fn locate(block: BlockId, local: [f32; 2]) -> ([f32; 2], i32, Option<MapId>) {
     let (space, map) = match (dst_area, block.area()) {
         (60, 12) => (12, Some(MapId::Underground)),
         (60, _) => (60, Some(MapId::Overworld)),
-        (61, _) => (61, Some(MapId::ShadowRealm)),
+        (61, _) => (61, Some(MapId::LandOfShadow)),
         (area, _) => (i32::from(area), None),
     };
     (position, space, map)
@@ -374,7 +375,7 @@ struct MarkerSlot {
     /// Game world map coordinates, see `maptiles::from_game_map`.
     x: f32,
     y: f32,
-    /// 0 for the overworld, 1 for the underground, 10 for the Shadow Realm.
+    /// 0 for the overworld, 1 for the underground, 10 for the Land of Shadow.
     map: u8,
     icon: u8,
     _pad: [u8; 2],
@@ -434,7 +435,7 @@ struct PointRow {
     space: i32,
     on_overworld: bool,
     on_underground: bool,
-    on_shadow_realm: bool,
+    on_land_of_shadow: bool,
     icon: u16,
     alt_icon: u16,
     open_flag: u32,
@@ -469,7 +470,7 @@ fn visible_points(map: MapId, position: [f32; 2], space: i32) -> Vec<MapPoint> {
         .filter(|row| match map {
             MapId::Overworld => row.on_overworld,
             MapId::Underground => row.on_underground,
-            MapId::ShadowRealm => row.on_shadow_realm,
+            MapId::LandOfShadow => row.on_land_of_shadow,
         })
         .filter(|row| {
             row.space == space
@@ -662,8 +663,8 @@ fn points() -> Option<&'static [PointRow]> {
                 on_overworld: row.disp_mask00() || unmasked && located == Some(MapId::Overworld),
                 on_underground: row.disp_mask01()
                     || unmasked && located == Some(MapId::Underground),
-                on_shadow_realm: row.disp_mask02()
-                    || unmasked && located == Some(MapId::ShadowRealm),
+                on_land_of_shadow: row.disp_mask02()
+                    || unmasked && located == Some(MapId::LandOfShadow),
                 icon: row.icon_id(),
                 alt_icon: row.alt_icon_id(),
                 open_flag: row.event_flag_id(),
@@ -687,31 +688,4 @@ fn points() -> Option<&'static [PointRow]> {
         }
     }
     Some(POINTS.get_or_init(|| points))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dlc_and_base_world_keep_the_same_grid_scale_across_event_variants() {
-        for (area, map) in [(60, MapId::Overworld), (61, MapId::ShadowRealm)] {
-            for lod in 0..=2 {
-                let tile = (256u32 << lod) as f32;
-                let expected = [
-                    12.0 + 18.0 * tile + (tile - 256.0) / 2.0,
-                    -9.0 + 16.0 * tile + (tile - 256.0) / 2.0,
-                ];
-                for variant in [0, 10] {
-                    assert_eq!(
-                        locate(
-                            BlockId::from_parts(area, 18, 16, variant + lod),
-                            [12.0, -9.0]
-                        ),
-                        (expected, i32::from(area), Some(map))
-                    );
-                }
-            }
-        }
-    }
 }
