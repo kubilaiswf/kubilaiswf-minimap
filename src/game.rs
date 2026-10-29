@@ -31,7 +31,8 @@ pub struct Snapshot {
     pub hud_visible: bool,
     /// A boss health bar is on screen.
     pub boss_fight: bool,
-    /// Catacombs (m30), caves (m31) and tunnels (m32), which have no map of their own.
+    /// Small dungeons, which have no map of their own: catacombs (m30), caves (m31) and tunnels
+    /// (m32), and in the DLC catacombs (m40), gaols (m41), ruined forges (m42) and caves (m43).
     pub in_cave: bool,
     pub graces: Vec<[f32; 2]>,
     pub beacons: Vec<Beacon>,
@@ -137,7 +138,7 @@ fn read() -> Option<Snapshot> {
         fade,
         hud_visible,
         boss_fight,
-        in_cave: (30..=32).contains(&player.current_block_id.area()),
+        in_cave: matches!(player.current_block_id.area(), 30..=32 | 40..=43),
         graces: discovered_graces(position, space),
         beacons: map.map_or_else(Vec::new, placed_beacons),
         points: map.map_or_else(Vec::new, |map| visible_points(map, position, space)),

@@ -31,7 +31,7 @@ It draws the game's own world map in the top right corner, turns with your camer
 - **[Map for Goblins](https://www.nexusmods.com/eldenring/mods/3091) and [Map for Goblins DLL](https://www.nexusmods.com/eldenring/mods/10062).** Their markers show up and disappear once looted. With the DLL edition you get its icons, and hiding a category in its menu hides it here too. From its version 2.1.6 the minimap reads both through its map API.
 - **Co-op partners**, Seamless Co-op included, as blue arrows. Out of range they point the way from the rim.
 - **A trail** of where you've been.
-- **Out of the way.** Hides in menus, on the world map, on loading screens, in Roundtable Hold and in caves and catacombs. Optionally during boss fights.
+- **Out of the way.** Hides in menus, on the world map, on loading screens, in Roundtable Hold and in small dungeons like caves, catacombs and gaols. Optionally during boss fights.
 
 ## Install
 
@@ -85,7 +85,7 @@ Everything else is in `minimap.ini` next to the DLL, created on first launch. Re
 | `full_map` | `true` | `false` shows only what your map fragments reveal |
 | `coop_players` | `true` | Show your co-op partners, Seamless Co-op included |
 | `hide_in_boss_fights` | `false` | Hide while a boss health bar is on screen |
-| `hide_in_caves` | `true` | Hide in catacombs, caves and tunnels |
+| `hide_in_caves` | `true` | Hide in catacombs, caves, tunnels, gaols and ruined forges |
 | `size` | `1.0` | 0.5 to 2.5 |
 | `margin` | `24` | Distance from the top right corner, in pixels at 1080p |
 | `toggle_key` | `F7` | F1-F12, A-Z, 0-9, Insert, Delete, Home, End, PageUp, PageDown, Keypad0-Keypad9, or `none` |
