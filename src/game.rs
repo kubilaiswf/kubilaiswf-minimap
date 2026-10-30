@@ -15,6 +15,8 @@ use crate::mfg;
 /// Copied out on a game task so the render thread never touches live game objects.
 #[derive(Clone)]
 pub struct Snapshot {
+    pub block_id: [u8;4],
+    pub local_position: [f32;3],
     /// Meters on the overworld grid where the world map can place the player, otherwise local
     /// to `space`.
     pub position: [f32; 2],
@@ -128,6 +130,8 @@ fn read() -> Option<Snapshot> {
         [player.block_position.x, player.block_position.z],
     );
     Some(Snapshot {
+        block_id:[player.current_block_id.area(),player.current_block_id.block(),player.current_block_id.region(),player.current_block_id.index()],
+        local_position:[player.block_position.x,player.block_position.y,player.block_position.z],
         position,
         space,
         map,

@@ -6,6 +6,10 @@ use hudhook::imgui::{Context, DrawListMut, FontSource, ImColor32, TextureId, Ui}
 use hudhook::{ImguiRenderLoop, RenderContext};
 
 use crate::config::Config;
+use crate::{dungeon, dungeon_loader};
+#[cfg(test)]
+#[path="dungeon_render_tests.rs"]
+mod dungeon_render_tests;
 use crate::game::{self, MfgIcon, PointKind, Snapshot};
 use crate::maptiles::{self, Loader, MapId, TILE, WINDOW};
 
@@ -42,6 +46,11 @@ const BLACK: [u8; 3] = [0, 0, 0];
 
 pub struct Minimap {
     config: Config,
+    dungeon_loader: Option<dungeon_loader::DungeonLoader>,
+    dungeon_key:Option<[u8;4]>,
+    dungeon:Option<dungeon_loader::Loaded>,
+    dungeon_floor:dungeon::FloorTracker,
+    dungeon_view:dungeon::View,
     /// False on game versions the mod can't read, see `lib.rs`.
     supported: bool,
     /// Seconds the update notice has been on screen.
@@ -70,9 +79,62 @@ pub struct Minimap {
 }
 
 impl Minimap {
+    pub fn with_dungeon_loader(mut self, loader:Option<dungeon_loader::DungeonLoader>)->Self {
+        self.dungeon_loader=loader;self
+    }
+    fn dungeon_active(&self,player:&Snapshot)->bool {
+        self.config.dungeon_mode && player.local_position.iter().all(|v|v.is_finite())
+            && self.dungeon.as_ref().is_some_and(|d|d.block==player.block_id && d.map.is_ok())
+    }
+    fn select_dungeon(&mut self,player:&Snapshot,dt:f32) {
+        let wanted=(self.config.dungeon_mode && player.in_cave).then_some(player.block_id);
+        if wanted!=self.dungeon_key {
+            self.dungeon_key=wanted;self.dungeon=None;self.dungeon_floor.reset();
+            if let (Some(key),Some(loader))=(wanted,&self.dungeon_loader) {loader.request(key);}
+        }
+        if let Some(loaded)=self.dungeon_loader.as_ref().and_then(|l|l.poll()) {
+            self.accept_dungeon(loaded);
+        }
+        if let Some(map)=self.dungeon.as_ref().and_then(|d|d.map.as_ref().ok()).filter(|_|player.local_position.iter().all(|v|v.is_finite())) {
+            self.dungeon_floor.update(map,player.local_position,dt);
+        }
+    }
+    fn accept_dungeon(&mut self,loaded:dungeon_loader::Loaded) {
+        if Some(loaded.block)==self.dungeon_key {self.dungeon=Some(loaded);}
+    }
+    fn draw_dungeon(&self,draw:&DrawListMut,player:&Snapshot,center:[f32;2],radius:f32) {
+        let Some(map)=self.dungeon.as_ref().and_then(|d|d.map.as_ref().ok()) else {return;};
+        let p=player.local_position;let floor=self.dungeon_floor.height().unwrap_or(p[1]);
+        let project=|v:dungeon::Point|self.to_screen([(v[0]-p[0])*radius/dungeon::ZOOM[self.zoom],(v[2]-p[2])*radius/dungeon::ZOOM[self.zoom]]);
+        let bands: &[(f32,f32,[u8;3],f32)]=match self.dungeon_view {
+            dungeon::View::Layered=>&[(-8.,-2.,[110,100,80],0.22),(2.,8.,[130,120,95],0.18),(-2.,2.,PALE_GOLD,0.8)],
+            dungeon::View::Current=>&[(-2.,2.,PALE_GOLD,0.8)],
+            dungeon::View::All=>&[(-10000.,10000.,PALE_GOLD,0.45)],
+        };
+        for &(low,high,color,alpha) in bands {
+            for tri in &map.triangles {
+                if !dungeon::overlaps_view(tri.points,p,dungeon::ZOOM[self.zoom],floor+low,floor+high) {continue;}
+                let clipped=dungeon::clip_height(&tri.points,floor+low,floor+high);
+                let screen:Vec<_>=clipped.into_iter().map(project).collect();
+                let clipped=dungeon::clip_disc(&screen,radius);
+                if clipped.len()<3 {continue;}
+                let points=clipped.into_iter().map(|p|[center[0]+p[0],center[1]+p[1]]).collect();
+                draw.add_polyline(points,self.color(color,alpha)).filled(true).build();
+            }
+        }
+        for line in &map.boundaries {
+            if let Some(line)=dungeon::clip_segment_height(*line,floor-2.,floor+2.) {
+                if let Some([a,b])=dungeon::clip_segment_disc(line.map(project),radius) {
+                    draw.add_line([center[0]+a[0],center[1]+a[1]],[center[0]+b[0],center[1]+b[1]],self.color(BRIGHT_GOLD,0.9)).thickness(1.).build();
+                }
+            }
+        }
+    }
     pub fn new(game_dir: &Path, config: Config, supported: bool) -> Self {
         Self {
             config,
+            dungeon_loader:None,dungeon_key:None,dungeon:None,
+            dungeon_floor:dungeon::FloorTracker::default(),dungeon_view:dungeon::View::Layered,
             supported,
             notice_time: 0.0,
             loader: Loader::spawn(game_dir),
@@ -159,6 +221,7 @@ impl ImguiRenderLoop for Minimap {
 
     fn render(&mut self, ui: &mut Ui) {
         let pressed = |key: Option<_>| key.is_some_and(|key| ui.is_key_pressed_no_repeat(key));
+        if pressed(self.config.dungeon_floor_key) { self.dungeon_view=self.dungeon_view.next(); }
         if pressed(self.config.toggle_key) {
             self.visible = !self.visible;
         }
@@ -178,6 +241,7 @@ impl ImguiRenderLoop for Minimap {
 
         let snapshot = game::LATEST.lock().unwrap().clone();
         if let Some(snapshot) = &snapshot {
+            self.select_dungeon(snapshot,ui.io().delta_time);
             self.update(snapshot);
         }
         // Characters turn instantly, so the arrow eases toward the facing in world space,
@@ -193,7 +257,7 @@ impl ImguiRenderLoop for Minimap {
                 if self.visible
                     && in_control(snapshot)
                     && !(self.config.hide_in_boss_fights && snapshot.boss_fight)
-                    && !(self.config.hide_in_caves && snapshot.in_cave) =>
+                    && !(self.config.hide_in_caves && snapshot.in_cave && !self.dungeon_active(snapshot)) =>
             {
                 1.0
             }
@@ -329,6 +393,7 @@ impl Minimap {
             self.draw_text_centered(ui, &draw_list, at, self.color(PALE_GOLD, blink), line);
         }
         self.draw_frame(&draw_list, center, frame_size);
+
     }
 
     fn draw_frame(&self, draw_list: &DrawListMut, center: [f32; 2], frame_size: f32) {
@@ -354,13 +419,15 @@ impl Minimap {
             .filled(true)
             .num_segments(96)
             .build();
-        if !self.draw_map(&draw_list, player, center, radius) {
+        let local=self.dungeon_active(player);
+        if local || !self.draw_map(&draw_list, player, center, radius) {
             draw_list
                 .add_circle(center, radius, self.color(BACKGROUND, 0.9))
                 .filled(true)
                 .num_segments(96)
                 .build();
         }
+        if local { self.draw_dungeon(&draw_list,player,center,radius); }
         // Darken toward the rim so the frame sits on the map instead of cutting it.
         for i in 0..4 {
             draw_list
@@ -374,6 +441,7 @@ impl Minimap {
                 .build();
         }
 
+        if !local {
         if self.config.trail {
             self.draw_trail(&draw_list, player, center, radius, s);
         }
@@ -384,6 +452,7 @@ impl Minimap {
             self.draw_coop(&draw_list, player, center, radius, s);
         }
 
+        }
         let letters = if self.config.compass {
             ["N", "E", "S", "W"].as_slice()
         } else {
@@ -409,6 +478,12 @@ impl Minimap {
 
         self.draw_arrow(&draw_list, center, s);
         self.draw_frame(&draw_list, center, frame_size);
+        if local {
+            if let Some(dungeon)=&self.dungeon {
+                let mode=match self.dungeon_view {dungeon::View::Layered=>"Layered",dungeon::View::Current=>"Current floor",dungeon::View::All=>"All floors"};
+                self.draw_text_centered(ui,&draw_list,[center[0],center[1]+frame_size*0.48+10.*s],self.color(PALE_GOLD,0.9),&format!("{} | {mode}",dungeon.name));
+            }
+        }
     }
 
     /// A fan of wedges clips the texture to a circle and gives each rim vertex its own
