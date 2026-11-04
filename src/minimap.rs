@@ -101,7 +101,11 @@ impl Minimap {
 impl ImguiRenderLoop for Minimap {
     fn initialize<'a>(&'a mut self, ctx: &mut Context, render_context: &'a mut dyn RenderContext) {
         ctx.set_ini_filename(None);
-        self.font_display_height = ctx.io().display_size[1];
+        // The display can still be 0 high here, which would bake a 0 px font.
+        let height = ctx.io().display_size[1];
+        if height > 0.0 {
+            self.font_display_height = height;
+        }
         // The first font added becomes the default one.
         let path = PathBuf::from(std::env::var_os("WINDIR").unwrap_or_default())
             .join(r"Fonts\georgiab.ttf");

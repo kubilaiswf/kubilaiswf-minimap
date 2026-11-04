@@ -207,8 +207,13 @@ fn locate(block: BlockId, local: [f32; 2]) -> ([f32; 2], i32, Option<MapId>) {
         // Overworld blocks are mAA_XX_ZZ_LL grid tiles of (256 << LL) meters with positions
         // relative to the tile center. Larger tiles are centered on their 2x2 or 4x4 group of
         // small tiles, hence the extra half-tile offsets.
-        // Only the units digit is the grid scale; the tens digit is an event variant.
-        let tile = (256u32 << (block.index() % 10).min(2)) as f32;
+        // The units digit is the grid scale (0 to 2); a larger one (m60_44_37_16 after Radahn)
+        // is a variant of a small tile.
+        let scale = match block.index() % 10 {
+            scale @ 0..=2 => u32::from(scale),
+            _ => 0,
+        };
+        let tile = (256u32 << scale) as f32;
         let center = (tile - 256.0) / 2.0;
         let position = [
             local[0] + f32::from(block.block()) * tile + center,
