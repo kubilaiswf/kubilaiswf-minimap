@@ -1,3 +1,5 @@
+mod dungeon;
+mod dungeon_loader;
 mod archive;
 mod config;
 mod formats;
@@ -62,8 +64,11 @@ fn init(module: usize) {
     };
     let dll = dll_path(module);
     let config = config::Config::load(&dll.with_file_name("minimap.ini"));
+    let dungeon_loader=if config.dungeon_mode {
+        dungeon_loader::DungeonLoader::spawn(&dll.with_file_name("dungeons"),&dll.with_file_name("dungeon-minimap.log")).ok()
+    } else {None};
     let _ = Hudhook::builder()
-        .with::<ImguiDx12Hooks>(minimap::Minimap::new(&game_dir, config, supported))
+        .with::<ImguiDx12Hooks>(minimap::Minimap::new(&game_dir, config, supported).with_dungeon_loader(dungeon_loader))
         .build()
         .apply();
 }

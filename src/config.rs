@@ -7,6 +7,8 @@ use hudhook::imgui::Key;
 const DEFAULT_INI: &str = include_str!("../package/minimap.ini");
 
 pub struct Config {
+    pub dungeon_mode: bool,
+    pub dungeon_floor_key: Option<Key>,
     pub trail: bool,
     pub rotate: bool,
     pub compass: bool,
@@ -28,6 +30,8 @@ impl Config {
             DEFAULT_INI.to_owned()
         });
         let mut config = Self {
+            dungeon_mode:false,
+            dungeon_floor_key:Some(Key::F11),
             trail: true,
             rotate: true,
             compass: true,
@@ -49,6 +53,8 @@ impl Config {
             };
             let value = value.split([';', '#']).next().unwrap_or_default().trim();
             match key.trim().to_ascii_lowercase().as_str() {
+                "dungeon_mode" => set_bool(&mut config.dungeon_mode,value),
+                "dungeon_floor_key" => set_key(&mut config.dungeon_floor_key,value),
                 "trail" => set_bool(&mut config.trail, value),
                 "rotate" => set_bool(&mut config.rotate, value),
                 "compass" => set_bool(&mut config.compass, value),

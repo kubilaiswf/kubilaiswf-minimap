@@ -70,6 +70,42 @@ natives = [ { path = 'C:\some\other\mod.dll' }, { path = 'C:\path\to\kubilaiswf-
 
 ## Controls and settings
 
+### Optional small-dungeon layouts (experimental)
+
+Set `dungeon_mode = true` to show locally prepared AI navigation layouts in
+catacombs, caves, tunnels, gaols and ruined forges (m30–m32 and m40–m43).
+This is opt-in; without an exact matching layout the usual map/hide behavior
+remains unchanged. F11 (`dungeon_floor_key`) cycles layered, current-floor and
+all-floor views. Zoom uses 15 / 30 / 60 metres inside a loaded small dungeon;
+the normal F7/F8 controls and all overworld behavior are unchanged.
+
+The layouts show navigable surfaces, not verified room walls. Current floors
+use gold; nearby higher/lower surfaces are faint. Stairs are clipped to their
+real heights. World-map markers, co-op markers and the trail are hidden only in
+the local dungeon view because their 2D map coordinates do not identify a local
+floor reliably. The original markers remain available on the regular map.
+
+No game-derived data is shipped or embedded. Prepare private sidecars from your
+own game installation using PowerShell 7, Python 3 and a local Smithbox install:
+
+```powershell
+pwsh -NoProfile -File tools/Export-DungeonNavigation.ps1 -GameRoot GAME_DIRECTORY -SmithboxRoot SMITHBOX_DIRECTORY -OutputRoot PRIVATE_EXPORT_DIRECTORY
+python tools/prepare_dungeon.py PRIVATE_EXPORT_DIRECTORY MINIMAP_DLL_DIRECTORY
+```
+
+The extractor uses Smithbox's SoulsFormats/HKLib assemblies, dictionary and map
+aliases plus the game's Oodle DLL; do not redistribute those dependencies.
+It writes `dungeons/maps.tsv` and matching `.nav` files beside the minimap DLL.
+Layouts load on a background thread, match exact block IDs, and discard stale
+results after warps. Malformed or unavailable data does not enable a dungeon
+view. Modded layouts and live alignment still require in-game testing.
+
+Offline checks: `cargo test --release --locked`. Optional local-data tests use
+`DUNGEON_NAV_TEST_DIR` and `TOMBSWARD_NAV_TEST_FILE` with `-- --include-ignored`.
+They check all 60 locally prepared map areas, not 60 verified distinct dungeons.
+This change contains no outdoor mesh renderer, below-surface or painted atlas
+support, and adds no dependencies to the upstream 0.7.0 package.
+
 | Key | |
 | --- | --- |
 | **F7** | Show / hide |
