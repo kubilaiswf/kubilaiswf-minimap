@@ -22,10 +22,10 @@ use hudhook::windows::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModu
 use hudhook::windows::core::PCWSTR;
 use pelite::pe64::{Pe, PeView};
 
-/// The game version the struct layouts and beacon offsets were made for. fromsoftware-rs panics
-/// on versions it doesn't know, which with `panic = "abort"` would crash the game, so on any other
-/// version the game is left alone.
-const SUPPORTED_VERSION: [u16; 4] = [2, 7, 2, 0];
+/// The game versions the mod reads: the worldwide exe and the Japanese one, which fromsoftware-rs
+/// also knows. It panics on versions it doesn't know, which with `panic = "abort"` would crash
+/// the game, so on any other version the game is left alone.
+const SUPPORTED_VERSIONS: [[u16; 4]; 2] = [[2, 7, 2, 0], [2, 7, 2, 1]];
 
 /// # Safety
 /// Called by the Windows loader when me3 loads this DLL. Do not call it yourself.
@@ -87,5 +87,5 @@ fn supported_game() -> bool {
         .ok()
         .and_then(|resources| resources.version_info().ok())
         .and_then(|info| info.fixed().map(|fixed| fixed.dwProductVersion));
-    version.is_some_and(|v| [v.Major, v.Minor, v.Patch, v.Build] == SUPPORTED_VERSION)
+    version.is_some_and(|v| SUPPORTED_VERSIONS.contains(&[v.Major, v.Minor, v.Patch, v.Build]))
 }

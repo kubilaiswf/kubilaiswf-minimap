@@ -53,4 +53,6 @@ jobs:
           $notes = (git tag -l --format='%(contents)' $tag) -join "`n"
           $sums = (Get-Content dist/SHA256SUMS.txt) -join "`n"
           @($notes, '', 'sha256', '```', $sums, '```') -join "`n" | Set-Content -Encoding utf8 notes.md
-          gh release create $tag dist/*.zip dist/SHA256SUMS.txt --title $tag --notes-file notes.md
+          # Tags like v0.7.1-jp-test are test builds and must not become the latest release.
+          $pre = if ($tag.Contains('-')) { @('--prerelease') } else { @() }
+          gh release create $tag dist/*.zip dist/SHA256SUMS.txt --title $tag --notes-file notes.md @pre
