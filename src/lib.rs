@@ -22,10 +22,11 @@ use hudhook::windows::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModu
 use hudhook::windows::core::PCWSTR;
 use pelite::pe64::{Pe, PeView};
 
-/// The game version the struct layouts and beacon offsets were made for. fromsoftware-rs panics
-/// on versions it doesn't know, which with `panic = "abort"` would crash the game, so on any other
+/// The game versions the struct layouts and beacon offsets were made for, by the exe's language:
+/// the worldwide and the Japanese release, as fromsoftware-rs tells them apart. It panics on
+/// versions it doesn't know, which with `panic = "abort"` would crash the game, so on any other
 /// version the game is left alone.
-const SUPPORTED_VERSION: [u16; 4] = [2, 7, 2, 0];
+const SUPPORTED_VERSIONS: [(u16, [u16; 4]); 2] = [(0x09, [2, 7, 2, 0]), (0x11, [2, 7, 2, 1])];
 
 /// # Safety
 /// Called by the Windows loader when me3 loads this DLL. Do not call it yourself.
@@ -82,10 +83,19 @@ fn supported_game() -> bool {
     };
     // SAFETY: the game's exe stays mapped for the life of the process.
     let exe = unsafe { PeView::module(exe.0 as *const u8) };
-    let version = exe
+    let Some(info) = exe
         .resources()
         .ok()
         .and_then(|resources| resources.version_info().ok())
-        .and_then(|info| info.fixed().map(|fixed| fixed.dwProductVersion));
-    version.is_some_and(|v| [v.Major, v.Minor, v.Patch, v.Build] == SUPPORTED_VERSION)
+    else {
+        return false;
+    };
+    let (Some(fixed), Some(language)) = (info.fixed(), info.translation().first()) else {
+        return false;
+    };
+    let v = fixed.dwProductVersion;
+    SUPPORTED_VERSIONS.contains(&(
+        language.lang_id & 0x03ff,
+        [v.Major, v.Minor, v.Patch, v.Build],
+    ))
 }
